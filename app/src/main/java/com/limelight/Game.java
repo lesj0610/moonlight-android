@@ -71,6 +71,7 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.View.OnGenericMotionListener;
 import android.view.View.OnSystemUiVisibilityChangeListener;
 import android.view.View.OnTouchListener;
@@ -99,6 +100,14 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     // Only 2 touches are supported
     private final TouchContext[] touchContextMap = new TouchContext[2];
     private long threeFingerDownTime = 0;
+
+    // A quick tap with two fingers that hardly move is a right click, in either touch mode
+    private static final int TWO_FINGER_TAP_THRESHOLD = 300;
+    private boolean twoFingerTapPossible = false;
+    private boolean ignoreFingersUntilLifted = false;
+    private long twoFingerDownTime = 0;
+    private final float[] twoFingerDownX = new float[2];
+    private final float[] twoFingerDownY = new float[2];
 
     private static final int REFERENCE_HORIZ_RES = 1280;
     private static final int REFERENCE_VERT_RES = 720;
@@ -1591,6 +1600,73 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
     }
 
+    /**
+     * Turn a quick two finger tap into a right click.
+     *
+     * The touch contexts are cancelled first, so neither also clicks. In
+     * touchscreen mode the pointer goes to the fingers first, where the click
+     * belongs; in trackpad mode it stays where it is.
+     *
+     * @return True once the tap has been turned into a click.
+     */
+    private boolean handleTwoFingerTap(View view, MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                twoFingerTapPossible = false;
+                return false;
+
+            case MotionEvent.ACTION_POINTER_DOWN:
+                twoFingerTapPossible = event.getPointerCount() == 2;
+                if (twoFingerTapPossible) {
+                    twoFingerDownTime = event.getEventTime();
+                    for (int i = 0; i < 2; i++) {
+                        twoFingerDownX[i] = event.getX(i);
+                        twoFingerDownY[i] = event.getY(i);
+                    }
+                }
+                return false;
+
+            case MotionEvent.ACTION_MOVE:
+                if (twoFingerTapPossible) {
+                    float slop = 2 * ViewConfiguration.get(this).getScaledTouchSlop();
+                    for (int i = 0; i < Math.min(2, event.getPointerCount()); i++) {
+                        if (Math.hypot(event.getX(i) - twoFingerDownX[i], event.getY(i) - twoFingerDownY[i]) > slop) {
+                            twoFingerTapPossible = false;
+                        }
+                    }
+                }
+                return false;
+
+            case MotionEvent.ACTION_POINTER_UP:
+                if (twoFingerTapPossible && event.getPointerCount() == 2 &&
+                        event.getEventTime() - twoFingerDownTime <= TWO_FINGER_TAP_THRESHOLD) {
+                    twoFingerTapPossible = false;
+
+                    for (TouchContext aTouchContext : touchContextMap) {
+                        aTouchContext.cancelTouch();
+                    }
+
+                    if (!prefConfig.touchscreenTrackpad && view != streamView) {
+                        float x = streamX((twoFingerDownX[0] + twoFingerDownX[1]) / 2);
+                        float y = streamY((twoFingerDownY[0] + twoFingerDownY[1]) / 2);
+                        x = Math.min(Math.max(x, 0), streamView.getWidth());
+                        y = Math.min(Math.max(y, 0), streamView.getHeight());
+                        conn.sendMousePosition((short) x, (short) y, (short) streamView.getWidth(), (short) streamView.getHeight());
+                    }
+
+                    // Held briefly, for apps that poll the buttons
+                    conn.sendMouseButtonDown(MouseButtonPacket.BUTTON_RIGHT);
+                    streamView.postDelayed(() -> conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_RIGHT), 100);
+                    return true;
+                }
+                twoFingerTapPossible = false;
+                return false;
+
+            default:
+                return false;
+        }
+    }
+
     private float streamScale() {
         return streamZoom != null ? streamZoom.getScale() : 1.0f;
     }
@@ -2089,6 +2165,18 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                         }
                         return true;
                     }
+                }
+
+                // The rest of a gesture already handled as a whole
+                if (ignoreFingersUntilLifted) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                        ignoreFingersUntilLifted = false;
+                    }
+                    return true;
+                }
+                if (handleTwoFingerTap(view, event)) {
+                    ignoreFingersUntilLifted = true;
+                    return true;
                 }
 
                 int actionIndex = event.getActionIndex();

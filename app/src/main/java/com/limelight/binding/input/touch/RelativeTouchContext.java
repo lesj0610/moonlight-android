@@ -18,6 +18,9 @@ public class RelativeTouchContext implements TouchContext {
     private boolean confirmedMove;
     private boolean confirmedDrag;
     private boolean confirmedScroll;
+    private boolean tapDrag;
+    private long lastTapUpTime;
+    private int lastTapUpX, lastTapUpY;
     private double distanceMoved;
     private double xFactor, yFactor;
     private int pointerCount;
@@ -89,6 +92,10 @@ public class RelativeTouchContext implements TouchContext {
     private static final int TAP_TIME_THRESHOLD = 250;
     private static final int DRAG_TIME_THRESHOLD = 650;
 
+    // A press this soon after a tap, and this close to it, drags from the start
+    private static final int TAP_DRAG_TIME_THRESHOLD = 300;
+    private static final int TAP_DRAG_DISTANCE_DP = 48;
+
     private static final int SCROLL_SPEED_FACTOR = 5;
 
     public RelativeTouchContext(NvConnection conn, int actionIndex,
@@ -158,12 +165,21 @@ public class RelativeTouchContext implements TouchContext {
         if (isNewFinger) {
             maxPointerCountInGesture = pointerCount;
             originalTouchTime = eventTime;
-            cancelled = confirmedDrag = confirmedMove = confirmedScroll = false;
+            cancelled = confirmedDrag = confirmedMove = confirmedScroll = tapDrag = false;
             distanceMoved = 0;
 
             if (actionIndex == 0) {
-                // Start the timer for engaging a drag
-                startDragTimer();
+                float tapDragDistance = TAP_DRAG_DISTANCE_DP * targetView.getResources().getDisplayMetrics().density;
+                if (eventTime - lastTapUpTime <= TAP_DRAG_TIME_THRESHOLD &&
+                        Math.hypot(eventX - lastTapUpX, eventY - lastTapUpY) <= tapDragDistance) {
+                    // A tap and then a press, as on a laptop's trackpad: the button
+                    // is held from the start, so moving drags and lifting double clicks
+                    startTapDrag();
+                }
+                else {
+                    // Start the timer for engaging a drag
+                    startDragTimer();
+                }
             }
         }
 
@@ -196,7 +212,24 @@ public class RelativeTouchContext implements TouchContext {
             Runnable buttonUpRunnable = buttonUpRunnables[buttonIndex - 1];
             handler.removeCallbacks(buttonUpRunnable);
             handler.postDelayed(buttonUpRunnable, 100);
+
+            if (buttonIndex == MouseButtonPacket.BUTTON_LEFT) {
+                lastTapUpTime = eventTime;
+                lastTapUpX = eventX;
+                lastTapUpY = eventY;
+            }
         }
+    }
+
+    private void startTapDrag() {
+        // The tap's click may not have been released yet, and must not be
+        // released in the middle of the drag
+        handler.removeCallbacks(buttonUpRunnables[MouseButtonPacket.BUTTON_LEFT - 1]);
+        conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
+
+        tapDrag = confirmedDrag = true;
+        lastTapUpTime = 0;
+        conn.sendMouseButtonDown(MouseButtonPacket.BUTTON_LEFT);
     }
 
     private void startDragTimer() {
@@ -323,6 +356,12 @@ public class RelativeTouchContext implements TouchContext {
     @Override
     public void setPointerCount(int pointerCount) {
         this.pointerCount = pointerCount;
+
+        // A second finger makes it some other gesture, not a drag
+        if (tapDrag && pointerCount > 1) {
+            tapDrag = confirmedDrag = false;
+            conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
+        }
 
         if (pointerCount > maxPointerCountInGesture) {
             maxPointerCountInGesture = pointerCount;
