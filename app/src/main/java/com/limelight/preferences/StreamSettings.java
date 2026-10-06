@@ -1,5 +1,6 @@
 package com.limelight.preferences;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -26,6 +27,10 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.text.InputType;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import com.limelight.LimeLog;
 import com.limelight.PcView;
@@ -122,7 +127,10 @@ public class StreamSettings extends Activity {
     }
 
     public static class SettingsFragment extends PreferenceFragment {
+        private static final String CUSTOM_RESOLUTION_VALUE = "custom";
+
         private int nativeResolutionStartIndex = Integer.MAX_VALUE;
+        private int customResolutionStartIndex = Integer.MAX_VALUE;
         private boolean nativeFramerateShown = false;
 
         private void setValue(String preferenceKey, String value) {
@@ -180,6 +188,85 @@ public class StreamSettings extends Activity {
                 nativeResolutionStartIndex = pref.getEntryValues().length;
             }
             appendPreferenceEntry(pref, newName, newValue);
+        }
+
+        private static boolean hasEntryValue(ListPreference pref, String value) {
+            for (CharSequence entryValue : pref.getEntryValues()) {
+                if (value.equals(entryValue.toString())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void addCustomResolutionEntry(ListPreference pref, String value) {
+            if (hasEntryValue(pref, value)) {
+                return;
+            }
+            if (pref.getEntryValues().length < customResolutionStartIndex) {
+                customResolutionStartIndex = pref.getEntryValues().length;
+            }
+            appendPreferenceEntry(pref, getResources().getString(R.string.resolution_custom_name, value), value);
+        }
+
+        private void addCustomResolutionEntries() {
+            ListPreference pref = (ListPreference) findPreference(PreferenceConfiguration.RESOLUTION_PREF_STRING);
+
+            // A resolution typed in earlier gets an entry of its own, so the list shows it as chosen
+            String current = pref.getValue();
+            if (current != null && PreferenceConfiguration.parseCustomResolution(current) != null) {
+                addCustomResolutionEntry(pref, current);
+            }
+
+            if (pref.getEntryValues().length < customResolutionStartIndex) {
+                customResolutionStartIndex = pref.getEntryValues().length;
+            }
+            appendPreferenceEntry(pref, getResources().getString(R.string.resolution_custom_entry), CUSTOM_RESOLUTION_VALUE);
+        }
+
+        private void showCustomResolutionDialog(final ListPreference pref) {
+            final Activity activity = getActivity();
+            int[] current = PreferenceConfiguration.parseCustomResolution(pref.getValue());
+
+            final EditText width = new EditText(activity);
+            width.setInputType(InputType.TYPE_CLASS_NUMBER);
+            width.setHint(R.string.hint_custom_resolution_width);
+            final EditText height = new EditText(activity);
+            height.setInputType(InputType.TYPE_CLASS_NUMBER);
+            height.setHint(R.string.hint_custom_resolution_height);
+            if (current != null) {
+                width.setText(Integer.toString(current[0]));
+                height.setText(Integer.toString(current[1]));
+            }
+
+            LinearLayout fields = new LinearLayout(activity);
+            fields.setOrientation(LinearLayout.HORIZONTAL);
+            int padding = (int) (20 * getResources().getDisplayMetrics().density);
+            fields.setPadding(padding, padding / 2, padding, 0);
+            fields.addView(width, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            fields.addView(height, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+            new AlertDialog.Builder(activity)
+                    .setTitle(R.string.title_custom_resolution_dialog)
+                    .setView(fields)
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                        int[] resolution = PreferenceConfiguration.parseCustomResolution(
+                                width.getText() + "x" + height.getText());
+                        if (resolution == null) {
+                            Toast.makeText(activity, getResources().getString(R.string.text_custom_resolution_invalid,
+                                    PreferenceConfiguration.MIN_CUSTOM_RESOLUTION,
+                                    PreferenceConfiguration.MAX_CUSTOM_WIDTH,
+                                    PreferenceConfiguration.MAX_CUSTOM_HEIGHT), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
+                        String value = resolution[0] + "x" + resolution[1];
+                        addCustomResolutionEntry(pref, value);
+                        pref.setValue(value);
+                        resetBitrateToDefault(PreferenceManager.getDefaultSharedPreferences(activity), value, null);
+                    })
+                    .show();
         }
 
         private void addNativeResolutionEntries(int nativeWidth, int nativeHeight, boolean insetsRemoved) {
@@ -611,6 +698,8 @@ public class StreamSettings extends Activity {
                 }
             }
 
+            addCustomResolutionEntries();
+
             // Add a listener to the FPS and resolution preference
             // so the bitrate can be auto-adjusted
             findPreference(PreferenceConfiguration.RESOLUTION_PREF_STRING).setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
@@ -619,12 +708,20 @@ public class StreamSettings extends Activity {
                     SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(SettingsFragment.this.getActivity());
                     String valueStr = (String) newValue;
 
+                    // Typing one in stores it once the dialog is confirmed
+                    if (CUSTOM_RESOLUTION_VALUE.equals(valueStr)) {
+                        showCustomResolutionDialog((ListPreference) preference);
+                        return false;
+                    }
+
                     // Detect if this value is the native resolution option
                     CharSequence[] values = ((ListPreference)preference).getEntryValues();
                     boolean isNativeRes = true;
                     for (int i = 0; i < values.length; i++) {
-                        // Look for a match prior to the start of the native resolution entries
-                        if (valueStr.equals(values[i].toString()) && i < nativeResolutionStartIndex) {
+                        // Look for a match prior to the start of the native resolution entries,
+                        // or among the ones typed in by hand
+                        if (valueStr.equals(values[i].toString()) &&
+                                (i < nativeResolutionStartIndex || i >= customResolutionStartIndex)) {
                             isNativeRes = false;
                             break;
                         }

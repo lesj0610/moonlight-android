@@ -287,4 +287,15 @@
     <string name="title_seekbar_vibrate_fallback_strength">에뮬레이트된 진동 강도 조정</string>
     <string name="summary_analog_scrolling">마우스 에뮬레이션 모드에서 스크롤할 아날로그 스틱을 선택하세요</string>
     <string name="suffix_seekbar_vibrate_fallback_strength">%</string>
+    <string name="title_checkbox_pinch_zoom">핀치로 확대·축소</string>
+    <string name="summary_checkbox_pinch_zoom">두 손가락을 벌리거나 오므려 화면을 최대 400%까지 확대·축소하고, 확대한 상태에서는 두 손가락으로 끌어 화면을 옮깁니다. Android 7 이상이 필요합니다.</string>
+    <string name="title_checkbox_show_onscreen_keyboard">가상 키보드</string>
+    <string name="summary_checkbox_show_onscreen_keyboard">스트림 위에 풀키 키보드를 여는 버튼을 표시합니다. 키보드가 열려 있을 때는 두 손가락으로 끌어 키보드에 가린 화면을 올려 볼 수 있습니다.</string>
+    <string name="osk_button_description">가상 키보드</string>
+    <string name="resolution_custom_entry">직접 입력…</string>
+    <string name="resolution_custom_name">사용자 지정 (%1$s)</string>
+    <string name="title_custom_resolution_dialog">해상도 직접 입력</string>
+    <string name="hint_custom_resolution_width">가로</string>
+    <string name="hint_custom_resolution_height">세로</string>
+    <string name="text_custom_resolution_invalid">가로·세로는 %1$d 이상, 최대 %2$d × %3$d까지 입력하세요.</string>
 </resources>

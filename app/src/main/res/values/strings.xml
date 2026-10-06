@@ -303,4 +303,15 @@
     <string name="analogscroll_none">None (both sticks move the mouse)</string>
     <string name="analogscroll_right">Right analog stick</string>
     <string name="analogscroll_left">Left analog stick</string>
+    <string name="title_checkbox_pinch_zoom">Pinch to zoom</string>
+    <string name="summary_checkbox_pinch_zoom">Spread or pinch two fingers to zoom the picture, up to 400%, and drag with two fingers to move it while zoomed. Needs Android 7 or later.</string>
+    <string name="title_checkbox_show_onscreen_keyboard">On-screen keyboard</string>
+    <string name="summary_checkbox_show_onscreen_keyboard">Show a button that opens a full keyboard over the stream. While it is open, drag with two fingers to move the picture up from under it.</string>
+    <string name="osk_button_description">On-screen keyboard</string>
+    <string name="resolution_custom_entry">Custom…</string>
+    <string name="resolution_custom_name">Custom (%1$s)</string>
+    <string name="title_custom_resolution_dialog">Custom resolution</string>
+    <string name="hint_custom_resolution_width">Width</string>
+    <string name="hint_custom_resolution_height">Height</string>
+    <string name="text_custom_resolution_invalid">Enter a width and height from %1$d up to %2$d × %3$d.</string>
 </resources>

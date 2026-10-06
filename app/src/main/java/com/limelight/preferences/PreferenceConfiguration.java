@@ -43,6 +43,8 @@ public class PreferenceConfiguration {
     private static final String USB_DRIVER_PREF_SRING = "checkbox_usb_driver";
     private static final String VIDEO_FORMAT_PREF_STRING = "video_format";
     private static final String ONSCREEN_CONTROLLER_PREF_STRING = "checkbox_show_onscreen_controls";
+    private static final String ONSCREEN_KEYBOARD_PREF_STRING = "checkbox_show_onscreen_keyboard";
+    private static final String PINCH_ZOOM_PREF_STRING = "checkbox_pinch_zoom";
     private static final String ONLY_L3_R3_PREF_STRING = "checkbox_only_show_L3R3";
     private static final String SHOW_GUIDE_BUTTON_PREF_STRING = "checkbox_show_guide_button";
     private static final String LEGACY_DISABLE_FRAME_DROP_PREF_STRING = "checkbox_disable_frame_drop";
@@ -83,6 +85,13 @@ public class PreferenceConfiguration {
     private static final String DEFAULT_VIDEO_FORMAT = "auto";
 
     private static final boolean ONSCREEN_CONTROLLER_DEFAULT = false;
+    private static final boolean ONSCREEN_KEYBOARD_DEFAULT = true;
+    private static final boolean PINCH_ZOOM_DEFAULT = true;
+
+    // Limits for a resolution typed in by hand. Encoders want even sizes.
+    public static final int MIN_CUSTOM_RESOLUTION = 256;
+    public static final int MAX_CUSTOM_WIDTH = 7680;
+    public static final int MAX_CUSTOM_HEIGHT = 4320;
     private static final boolean ONLY_L3_R3_DEFAULT = false;
     private static final boolean SHOW_GUIDE_BUTTON_DEFAULT = true;
     private static final boolean DEFAULT_ENABLE_HDR = false;
@@ -131,6 +140,8 @@ public class PreferenceConfiguration {
     public String language;
     public boolean smallIconMode, multiController, usbDriver, flipFaceButtons;
     public boolean onscreenController;
+    public boolean onscreenKeyboard;
+    public boolean pinchZoom;
     public boolean onlyL3R3;
     public boolean showGuideButton;
     public boolean enableHdr;
@@ -230,12 +241,34 @@ public class PreferenceConfiguration {
         }
     }
 
-    private static int getWidthFromResolutionString(String resString) {
-        return Integer.parseInt(resString.split("x")[0]);
-    }
+    /**
+     * Read a resolution typed in by hand, such as "1718x1360".
+     *
+     * @return The width and height, or null if it is not a usable resolution.
+     */
+    public static int[] parseCustomResolution(String resString) {
+        if (resString == null) {
+            return null;
+        }
 
-    private static int getHeightFromResolutionString(String resString) {
-        return Integer.parseInt(resString.split("x")[1]);
+        String[] parts = resString.trim().toLowerCase().split("[x×*, ]+");
+        if (parts.length != 2) {
+            return null;
+        }
+
+        try {
+            int width = Integer.parseInt(parts[0].trim());
+            int height = Integer.parseInt(parts[1].trim());
+            if (width < MIN_CUSTOM_RESOLUTION || height < MIN_CUSTOM_RESOLUTION ||
+                    width > MAX_CUSTOM_WIDTH || height > MAX_CUSTOM_HEIGHT) {
+                return null;
+            }
+
+            // Rounded down to even sizes, which every encoder and decoder accepts
+            return new int[] { width & ~1, height & ~1 };
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static String getResolutionString(int width, int height) {
@@ -257,8 +290,12 @@ public class PreferenceConfiguration {
     }
 
     public static int getDefaultBitrate(String resString, String fpsString) {
-        int width = getWidthFromResolutionString(resString);
-        int height = getHeightFromResolutionString(resString);
+        int[] resolution = parseCustomResolution(resString);
+        if (resolution == null) {
+            resolution = parseCustomResolution(DEFAULT_RESOLUTION);
+        }
+        int width = resolution[0];
+        int height = resolution[1];
         int fps = Integer.parseInt(fpsString);
 
         // This logic is shamelessly stolen from Moonlight Qt:
@@ -522,8 +559,14 @@ public class PreferenceConfiguration {
                 prefs.edit().putString(RESOLUTION_PREF_STRING, resStr).apply();
             }
 
-            config.width = PreferenceConfiguration.getWidthFromResolutionString(resStr);
-            config.height = PreferenceConfiguration.getHeightFromResolutionString(resStr);
+            // A resolution typed in by hand can be anything, so it is checked
+            // rather than trusted
+            int[] resolution = parseCustomResolution(resStr);
+            if (resolution == null) {
+                resolution = parseCustomResolution(PreferenceConfiguration.DEFAULT_RESOLUTION);
+            }
+            config.width = resolution[0];
+            config.height = resolution[1];
             config.fps = Integer.parseInt(prefs.getString(FPS_PREF_STRING, PreferenceConfiguration.DEFAULT_FPS));
         }
 
@@ -579,6 +622,8 @@ public class PreferenceConfiguration {
         config.multiController = prefs.getBoolean(MULTI_CONTROLLER_PREF_STRING, DEFAULT_MULTI_CONTROLLER);
         config.usbDriver = prefs.getBoolean(USB_DRIVER_PREF_SRING, DEFAULT_USB_DRIVER);
         config.onscreenController = prefs.getBoolean(ONSCREEN_CONTROLLER_PREF_STRING, ONSCREEN_CONTROLLER_DEFAULT);
+        config.onscreenKeyboard = prefs.getBoolean(ONSCREEN_KEYBOARD_PREF_STRING, ONSCREEN_KEYBOARD_DEFAULT);
+        config.pinchZoom = prefs.getBoolean(PINCH_ZOOM_PREF_STRING, PINCH_ZOOM_DEFAULT);
         config.onlyL3R3 = prefs.getBoolean(ONLY_L3_R3_PREF_STRING, ONLY_L3_R3_DEFAULT);
         config.showGuideButton = prefs.getBoolean(SHOW_GUIDE_BUTTON_PREF_STRING, SHOW_GUIDE_BUTTON_DEFAULT);
         config.enableHdr = prefs.getBoolean(ENABLE_HDR_PREF_STRING, DEFAULT_ENABLE_HDR) && !isShieldAtvFirmwareWithBrokenHdr();

@@ -12,6 +12,7 @@ import com.limelight.binding.input.touch.RelativeTouchContext;
 import com.limelight.binding.input.driver.UsbDriverService;
 import com.limelight.binding.input.evdev.EvdevListener;
 import com.limelight.binding.input.touch.TouchContext;
+import com.limelight.binding.input.osk.OnScreenKeyboard;
 import com.limelight.binding.input.virtual_controller.VirtualController;
 import com.limelight.binding.video.CrashListener;
 import com.limelight.binding.video.MediaCodecDecoderRenderer;
@@ -31,6 +32,7 @@ import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
+import com.limelight.ui.StreamZoom;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ServerHelper;
 import com.limelight.utils.ShortcutHelper;
@@ -112,6 +114,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private ControllerHandler controllerHandler;
     private KeyboardTranslator keyboardTranslator;
     private VirtualController virtualController;
+    private OnScreenKeyboard onScreenKeyboard;
 
     private PreferenceConfiguration prefConfig;
     private SharedPreferences tombstonePrefs;
@@ -137,6 +140,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private boolean waitingForAllModifiersUp = false;
     private int specialKeyCode = KeyEvent.KEYCODE_UNKNOWN;
     private StreamView streamView;
+    private StreamZoom streamZoom;
     private long lastAbsTouchUpTime = 0;
     private long lastAbsTouchDownTime = 0;
     private float lastAbsTouchUpX, lastAbsTouchUpY;
@@ -240,6 +244,18 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         streamView.setOnGenericMotionListener(this);
         streamView.setOnKeyListener(this);
         streamView.setInputCallbacks(this);
+
+        // Scaling a SurfaceView only keeps its content in step from Android 7 on.
+        // The on-screen keyboard needs it too, to move the stream up from under it.
+        if ((prefConfig.pinchZoom || prefConfig.onscreenKeyboard) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            streamZoom = new StreamZoom(streamView, prefConfig.pinchZoom);
+            streamView.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                // A new size or place would leave the zoom pointing at the wrong part
+                if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop || left != oldLeft || top != oldTop) {
+                    streamZoom.reset();
+                }
+            });
+        }
 
         // Listen for touch events on the background touch view to enable trackpad mode
         // to work on areas outside of the StreamView itself. We use a separate View
@@ -513,6 +529,21 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             virtualController.show();
         }
 
+        if (prefConfig.onscreenKeyboard) {
+            onScreenKeyboard = new OnScreenKeyboard(this, (FrameLayout) streamView.getParent(),
+                    (keyCode, down, modifiers, flags) -> {
+                        if (conn != null) {
+                            conn.sendKeyboardInput(keyCode, down ? KeyboardPacket.KEY_DOWN : KeyboardPacket.KEY_UP, modifiers, flags);
+                        }
+                    },
+                    pixels -> {
+                        // The stream can then be moved up from under the keyboard, but stays put until it is
+                        if (streamZoom != null) {
+                            streamZoom.setCoveredBottom(pixels);
+                        }
+                    });
+        }
+
         if (prefConfig.usbDriver) {
             // Start the USB driver
             bindService(new Intent(this, UsbDriverService.class),
@@ -581,6 +612,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         // Set requested orientation for possible new screen size
         setPreferredOrientationForCurrentDisplay();
 
+        if (streamZoom != null) {
+            streamZoom.reset();
+        }
+
         if (virtualController != null) {
             // Refresh layout of OSC for possible new screen size
             virtualController.refreshLayout();
@@ -593,6 +628,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 if (virtualController != null) {
                     virtualController.hide();
+                }
+                if (onScreenKeyboard != null) {
+                    onScreenKeyboard.hide();
                 }
 
                 performanceOverlayView.setVisibility(View.GONE);
@@ -611,6 +649,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 if (virtualController != null) {
                     virtualController.show();
+                }
+                if (onScreenKeyboard != null) {
+                    onScreenKeyboard.show();
                 }
 
                 if (prefConfig.enablePerfOverlay) {
@@ -1086,6 +1127,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             virtualController.hide();
         }
 
+        if (onScreenKeyboard != null) {
+            // Lets go of any key still held, while the host can still hear it
+            onScreenKeyboard.hide();
+        }
+
         if (conn != null) {
             int videoFormat = decoderRenderer.getActiveVideoFormat();
 
@@ -1545,6 +1591,36 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         }
     }
 
+    private float streamScale() {
+        return streamZoom != null ? streamZoom.getScale() : 1.0f;
+    }
+
+    // A position on the view behind the stream, in the stream view's own coordinates
+    private float streamX(float x) {
+        return streamZoom != null ? streamZoom.toStreamX(x) : x - streamView.getX();
+    }
+
+    private float streamY(float y) {
+        return streamZoom != null ? streamZoom.toStreamY(y) : y - streamView.getY();
+    }
+
+    // A finger's position as the touch contexts take it. In absolute mode it is
+    // relative to the stream. In trackpad mode only its movement counts, which
+    // shrinks with the zoom so the pointer keeps pace with the zoomed picture.
+    private int fingerX(View view, float x) {
+        if (view == streamView) {
+            return (int) x;
+        }
+        return (int) (prefConfig.touchscreenTrackpad ? x / streamScale() : streamX(x));
+    }
+
+    private int fingerY(View view, float y) {
+        if (view == streamView) {
+            return (int) y;
+        }
+        return (int) (prefConfig.touchscreenTrackpad ? y / streamScale() : streamY(y));
+    }
+
     private float[] getStreamViewRelativeNormalizedXY(View view, MotionEvent event, int pointerIndex) {
         float normalizedX = event.getX(pointerIndex);
         float normalizedY = event.getY(pointerIndex);
@@ -1552,8 +1628,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         // For the containing background view, we must subtract the origin
         // of the StreamView to get video-relative coordinates.
         if (view != streamView) {
-            normalizedX -= streamView.getX();
-            normalizedY -= streamView.getY();
+            normalizedX = streamX(normalizedX);
+            normalizedY = streamY(normalizedY);
         }
 
         normalizedX = Math.max(normalizedX, 0.0f);
@@ -1652,11 +1728,12 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         // the orientation), so rotate the orientation angle by 90 degrees.
         float[] contactAreaMinorCartesian = polarToCartesian(contactAreaMinor, (float)(orientation + (Math.PI / 2)));
 
-        // Normalize the contact area to the stream view size
-        contactAreaMajorCartesian[0] = Math.min(Math.abs(contactAreaMajorCartesian[0]), streamView.getWidth()) / streamView.getWidth();
-        contactAreaMinorCartesian[0] = Math.min(Math.abs(contactAreaMinorCartesian[0]), streamView.getWidth()) / streamView.getWidth();
-        contactAreaMajorCartesian[1] = Math.min(Math.abs(contactAreaMajorCartesian[1]), streamView.getHeight()) / streamView.getHeight();
-        contactAreaMinorCartesian[1] = Math.min(Math.abs(contactAreaMinorCartesian[1]), streamView.getHeight()) / streamView.getHeight();
+        // Normalize the contact area to the stream view size, as it appears while zoomed
+        float scale = streamScale();
+        contactAreaMajorCartesian[0] = Math.min(Math.abs(contactAreaMajorCartesian[0]) / scale, streamView.getWidth()) / streamView.getWidth();
+        contactAreaMinorCartesian[0] = Math.min(Math.abs(contactAreaMinorCartesian[0]) / scale, streamView.getWidth()) / streamView.getWidth();
+        contactAreaMajorCartesian[1] = Math.min(Math.abs(contactAreaMajorCartesian[1]) / scale, streamView.getHeight()) / streamView.getHeight();
+        contactAreaMinorCartesian[1] = Math.min(Math.abs(contactAreaMinorCartesian[1]) / scale, streamView.getHeight()) / streamView.getHeight();
 
         // Convert the normalized values back into polar coordinates
         return new float[] { cartesianToR(contactAreaMajorCartesian), cartesianToR(contactAreaMinorCartesian) };
@@ -2000,22 +2077,24 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     return true;
                 }
 
-                // If this is the parent view, we'll offset our coordinates to appear as if they
-                // are relative to the StreamView like our StreamView touch events are.
-                float xOffset, yOffset;
-                if (view != streamView && !prefConfig.touchscreenTrackpad) {
-                    xOffset = -streamView.getX();
-                    yOffset = -streamView.getY();
-                }
-                else {
-                    xOffset = 0.f;
-                    yOffset = 0.f;
+                // Pinching zooms the stream, and none of it reaches the host
+                if (streamZoom != null && view != streamView) {
+                    boolean wasZooming = streamZoom.isZooming();
+                    if (streamZoom.onTouchEvent(event)) {
+                        if (!wasZooming) {
+                            // Whatever the fingers started doesn't get to finish
+                            for (TouchContext aTouchContext : touchContextMap) {
+                                aTouchContext.cancelTouch();
+                            }
+                        }
+                        return true;
+                    }
                 }
 
                 int actionIndex = event.getActionIndex();
 
-                int eventX = (int)(event.getX(actionIndex) + xOffset);
-                int eventY = (int)(event.getY(actionIndex) + yOffset);
+                int eventX = fingerX(view, event.getX(actionIndex));
+                int eventY = fingerY(view, event.getY(actionIndex));
 
                 // Special handling for 3 finger gesture
                 if (event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN &&
@@ -2080,8 +2159,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     if (actionIndex == 0 && event.getPointerCount() > 1 && !context.isCancelled()) {
                         // The original secondary touch now becomes primary
                         context.touchDownEvent(
-                                (int)(event.getX(1) + xOffset),
-                                (int)(event.getY(1) + yOffset),
+                                fingerX(view, event.getX(1)),
+                                fingerY(view, event.getY(1)),
                                 event.getEventTime(), false);
                     }
                     break;
@@ -2095,8 +2174,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                             if (aTouchContextMap.getActionIndex() < event.getPointerCount())
                             {
                                 aTouchContextMap.touchMoveEvent(
-                                        (int)(event.getHistoricalX(aTouchContextMap.getActionIndex(), i) + xOffset),
-                                        (int)(event.getHistoricalY(aTouchContextMap.getActionIndex(), i) + yOffset),
+                                        fingerX(view, event.getHistoricalX(aTouchContextMap.getActionIndex(), i)),
+                                        fingerY(view, event.getHistoricalY(aTouchContextMap.getActionIndex(), i)),
                                         event.getHistoricalEventTime(i));
                             }
                         }
@@ -2107,8 +2186,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                         if (aTouchContextMap.getActionIndex() < event.getPointerCount())
                         {
                             aTouchContextMap.touchMoveEvent(
-                                    (int)(event.getX(aTouchContextMap.getActionIndex()) + xOffset),
-                                    (int)(event.getY(aTouchContextMap.getActionIndex()) + yOffset),
+                                    fingerX(view, event.getX(aTouchContextMap.getActionIndex())),
+                                    fingerY(view, event.getY(aTouchContextMap.getActionIndex())),
                                     event.getEventTime());
                         }
                     }
@@ -2150,8 +2229,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         else {
             // For the containing background view, we must subtract the origin
             // of the StreamView to get video-relative coordinates.
-            eventX = event.getX(0) - streamView.getX();
-            eventY = event.getY(0) - streamView.getY();
+            eventX = streamX(event.getX(0));
+            eventY = streamY(event.getY(0));
         }
 
         if (event.getPointerCount() == 1 && event.getActionIndex() == 0 &&
