@@ -13,8 +13,8 @@ android {
 
         // The fork's releases count on from upstream's, times a thousand, so
         // each one installs over the last and upstream's next still comes after
-        versionName "12.2-fork2"
-        versionCode = 315 * 1000 + 2
+        versionName "12.2-fork3"
+        versionCode = 315 * 1000 + 3
 
         // Generate native debug symbols to allow Google Play to symbolicate our native crashes
         ndk.debugSymbolLevel = 'FULL'
