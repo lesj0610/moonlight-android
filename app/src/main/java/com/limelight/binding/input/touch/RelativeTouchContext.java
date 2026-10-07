@@ -19,7 +19,7 @@ public class RelativeTouchContext implements TouchContext {
     private boolean confirmedDrag;
     private boolean confirmedScroll;
     private boolean tapDrag;
-    private long lastTapUpTime;
+    private boolean tapHeld;
     private int lastTapUpX, lastTapUpY;
     private double distanceMoved;
     private double xFactor, yFactor;
@@ -58,6 +58,7 @@ public class RelativeTouchContext implements TouchContext {
             new Runnable() {
                 @Override
                 public void run() {
+                    tapHeld = false;
                     conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
                 }
             },
@@ -92,7 +93,8 @@ public class RelativeTouchContext implements TouchContext {
     private static final int TAP_TIME_THRESHOLD = 250;
     private static final int DRAG_TIME_THRESHOLD = 650;
 
-    // A press this soon after a tap, and this close to it, drags from the start
+    // A press this soon after a tap, and this close to it, drags from the start.
+    // A tap's click is held down this long, so such a press can carry it on.
     private static final int TAP_DRAG_TIME_THRESHOLD = 300;
     private static final int TAP_DRAG_DISTANCE_DP = 48;
 
@@ -170,13 +172,14 @@ public class RelativeTouchContext implements TouchContext {
 
             if (actionIndex == 0) {
                 float tapDragDistance = TAP_DRAG_DISTANCE_DP * targetView.getResources().getDisplayMetrics().density;
-                if (eventTime - lastTapUpTime <= TAP_DRAG_TIME_THRESHOLD &&
-                        Math.hypot(eventX - lastTapUpX, eventY - lastTapUpY) <= tapDragDistance) {
-                    // A tap and then a press, as on a laptop's trackpad: the button
-                    // is held from the start, so moving drags and lifting double clicks
+                if (tapHeld && Math.hypot(eventX - lastTapUpX, eventY - lastTapUpY) <= tapDragDistance) {
+                    // A tap and then a press, as on a laptop's trackpad: the press
+                    // carries on the tap's click, so moving drags and lifting double clicks
                     startTapDrag();
                 }
                 else {
+                    releaseTap();
+
                     // Start the timer for engaging a drag
                     startDragTimer();
                 }
@@ -202,34 +205,51 @@ public class RelativeTouchContext implements TouchContext {
             // Raise the button after a drag
             conn.sendMouseButtonUp(buttonIndex);
         }
+        else if (tapDrag) {
+            // A press after a tap that never moved lets go of the tap's click,
+            // and if it was a tap too, clicks again to make a double click
+            conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
+            if (isTap(eventTime)) {
+                conn.sendMouseButtonDown(MouseButtonPacket.BUTTON_LEFT);
+                handler.postDelayed(buttonUpRunnables[MouseButtonPacket.BUTTON_LEFT - 1], 100);
+            }
+        }
         else if (isTap(eventTime))
         {
             // Lower the mouse button
             conn.sendMouseButtonDown(buttonIndex);
 
             // Release the mouse button in 100ms to allow for apps that use polling
-            // to detect mouse button presses.
+            // to detect mouse button presses. A left click waits long enough for
+            // a press to carry it on into a drag.
             Runnable buttonUpRunnable = buttonUpRunnables[buttonIndex - 1];
             handler.removeCallbacks(buttonUpRunnable);
-            handler.postDelayed(buttonUpRunnable, 100);
-
             if (buttonIndex == MouseButtonPacket.BUTTON_LEFT) {
-                lastTapUpTime = eventTime;
+                tapHeld = true;
                 lastTapUpX = eventX;
                 lastTapUpY = eventY;
+                handler.postDelayed(buttonUpRunnable, TAP_DRAG_TIME_THRESHOLD);
+            }
+            else {
+                handler.postDelayed(buttonUpRunnable, 100);
             }
         }
     }
 
     private void startTapDrag() {
-        // The tap's click may not have been released yet, and must not be
-        // released in the middle of the drag
+        // Keep holding the tap's click rather than pressing again, or the
+        // host would take the second press for a double click
         handler.removeCallbacks(buttonUpRunnables[MouseButtonPacket.BUTTON_LEFT - 1]);
-        conn.sendMouseButtonUp(MouseButtonPacket.BUTTON_LEFT);
+        tapHeld = false;
+        tapDrag = true;
+    }
 
-        tapDrag = confirmedDrag = true;
-        lastTapUpTime = 0;
-        conn.sendMouseButtonDown(MouseButtonPacket.BUTTON_LEFT);
+    private void releaseTap() {
+        if (tapHeld) {
+            Runnable buttonUpRunnable = buttonUpRunnables[MouseButtonPacket.BUTTON_LEFT - 1];
+            handler.removeCallbacks(buttonUpRunnable);
+            buttonUpRunnable.run();
+        }
     }
 
     private void startDragTimer() {
@@ -284,6 +304,21 @@ public class RelativeTouchContext implements TouchContext {
 
             // We only send moves and drags for the primary touch point
             if (actionIndex == 0) {
+                if (tapDrag && !confirmedDrag) {
+                    if (!confirmedMove) {
+                        // Hold still until it is either a drag or a second tap,
+                        // so a double click lands where the tap did
+                        lastTouchX = eventX;
+                        lastTouchY = eventY;
+                        return true;
+                    }
+
+                    // Drag the whole way from where the press started
+                    confirmedDrag = true;
+                    lastTouchX = originalTouchX;
+                    lastTouchY = originalTouchY;
+                }
+
                 int deltaX = eventX - lastTouchX;
                 int deltaY = eventY - lastTouchY;
 
@@ -342,8 +377,9 @@ public class RelativeTouchContext implements TouchContext {
         // Cancel the drag timer
         cancelDragTimer();
 
-        // If it was a confirmed drag, we'll need to raise the button now
-        if (confirmedDrag) {
+        // If the button is held for a drag or a press after a tap, raise it now
+        if (confirmedDrag || tapDrag) {
+            tapDrag = false;
             conn.sendMouseButtonUp(getMouseButtonIndex());
         }
     }
