@@ -119,7 +119,8 @@ public abstract class KeyboardLanguage {
 
     /**
      * The languages the keyboard switches between, in order. The first is
-     * where it starts, and should be the one the host starts in.
+     * where it starts, and should be the one the host starts in. When it is
+     * not, holding the language key brings the labels in line.
      */
     public static final List<KeyboardLanguage> ALL = Collections.unmodifiableList(Arrays.asList(
             new English(),

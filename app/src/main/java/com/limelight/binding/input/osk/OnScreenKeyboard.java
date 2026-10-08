@@ -7,6 +7,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -90,6 +91,11 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
     private boolean expanded = false;
     private boolean hidden = false;
     private boolean releasing = false;
+
+    // Holding the language key switches only the labels, for when they no
+    // longer match the host (it was already in another language, say).
+    private final Runnable languageHold = this::switchLabelsOnly;
+    private boolean labelsSwitched = false;
 
     @SuppressLint("ClickableViewAccessibility")
     public OnScreenKeyboard(Context context, FrameLayout parent, KeySender sender, CoverListener coverListener) {
@@ -289,9 +295,22 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
                 sender.sendKey(hostCode(VK_CAPITAL), true, activeModifiers(), (byte) 0);
                 break;
 
+            case LANGUAGE:
+                labelsSwitched = false;
+                keys.removeCallbacks(languageHold);
+                keys.postDelayed(languageHold, ViewConfiguration.getLongPressTimeout());
+                break;
+
             default:
                 break;
         }
+    }
+
+    private void switchLabelsOnly() {
+        labelsSwitched = true;
+        languageIndex = (languageIndex + 1) % KeyboardLanguage.ALL.size();
+        keys.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        keys.invalidate();
     }
 
     @Override
@@ -356,7 +375,8 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
                 break;
 
             case LANGUAGE: {
-                if (releasing) {
+                keys.removeCallbacks(languageHold);
+                if (releasing || labelsSwitched) {
                     break;
                 }
                 KeyboardLanguage.KeyTapper tapper = (keyCode, flags) -> {
