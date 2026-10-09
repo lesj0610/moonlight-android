@@ -306,6 +306,10 @@
     <string name="title_checkbox_pinch_zoom">Pinch to zoom</string>
     <string name="summary_checkbox_pinch_zoom">Spread or pinch two fingers to zoom the picture, up to 400%, and drag with two fingers to move it while zoomed. Needs Android 7 or later.</string>
     <string name="title_checkbox_show_onscreen_keyboard">On-screen keyboard</string>
+    <string name="title_checkbox_osk_commit_on_release">Type keys on release</string>
+    <string name="summary_checkbox_osk_commit_on_release">On-screen keyboard letters go in when the finger lifts. The key shows above the finger while it is down, so a wrong one can be fixed by sliding to the next key first. Turn off to send letters as soon as they are touched, as games need.</string>
+    <string name="title_checkbox_osk_hangul_hint">Korean jamo hint</string>
+    <string name="summary_checkbox_osk_hangul_hint">While typing Korean on the on-screen keyboard, a touch near the edge between ㅅ and ㅛ, ㅎ and ㅗ, or ㅍ and ㅠ goes to whichever fits the syllable being typed. The middle of a key is always that key.</string>
     <string name="summary_checkbox_show_onscreen_keyboard">Show a button that opens a full keyboard over the stream. While it is open, drag with two fingers to move the picture up from under it.</string>
     <string name="osk_button_description">On-screen keyboard</string>
     <string name="resolution_custom_entry">Custom…</string>

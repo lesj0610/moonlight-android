@@ -5,15 +5,18 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.util.TypedValue;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import com.limelight.R;
 
@@ -63,6 +66,10 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
 
     private static final int VK_CAPITAL = 0x14;
 
+    // A 두벌식 letter typed in Korean is a consonant on the left of the keyboard and a vowel on the right
+    private static final String VOWEL_KEYS = "YUIOPHJKLBNM";
+    private static final int NO_JAMO = 0, CONSONANT = 1, VOWEL = 2;
+
     private enum Latch { OFF, ONCE, LOCKED }
 
     private static final byte[] MODIFIERS = {
@@ -78,6 +85,8 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
     private final ImageView button;
     private final LinearLayout panel;
     private final KeyboardView keys;
+    private final boolean hangulHint;
+    private TextView preview;
 
     // Per modifier, in the order of MODIFIERS
     private final Latch[] latches = { Latch.OFF, Latch.OFF, Latch.OFF, Latch.OFF };
@@ -97,15 +106,24 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
     private final Runnable languageHold = this::switchLabelsOnly;
     private boolean labelsSwitched = false;
 
+    // What the Korean typed so far makes the next letter, for touches between a consonant and a vowel
+    private int lastJamo = NO_JAMO;
+    private int expectedJamo = NO_JAMO;
+    private int lastLetterVk = 0;
+
     @SuppressLint("ClickableViewAccessibility")
-    public OnScreenKeyboard(Context context, FrameLayout parent, KeySender sender, CoverListener coverListener) {
+    public OnScreenKeyboard(Context context, FrameLayout parent, KeySender sender, CoverListener coverListener,
+                            boolean commitOnRelease, boolean hangulHint) {
         this.parent = parent;
         this.sender = sender;
         this.coverListener = coverListener;
         this.prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         this.density = context.getResources().getDisplayMetrics().density;
+        // The hint moves keys a finger is on, so it needs the key shown before it types
+        this.hangulHint = hangulHint && commitOnRelease;
 
         keys = new KeyboardView(context, this, this);
+        keys.setCommitOnRelease(commitOnRelease);
 
         panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -169,6 +187,7 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
         releasing = true;
         keys.releaseAll();
         releasing = false;
+        forgetJamo();
         for (int i = 0; i < MODIFIERS.length; i++) {
             latches[i] = Latch.OFF;
             heldFingers[i] = 0;
@@ -287,10 +306,17 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
                     }
                 }
                 sender.sendKey(hostCode(key.vk), true, modifiers, (byte) 0);
+                if (key.kind == KeyboardLayout.Kind.CHARACTER) {
+                    trackJamo(key);
+                }
+                else {
+                    forgetJamo();
+                }
                 break;
             }
 
             case CAPS_LOCK:
+                forgetJamo();
                 capsOn = !capsOn;
                 sender.sendKey(hostCode(VK_CAPITAL), true, activeModifiers(), (byte) 0);
                 break;
@@ -308,6 +334,7 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
 
     private void switchLabelsOnly() {
         labelsSwitched = true;
+        forgetJamo();
         languageIndex = (languageIndex + 1) % KeyboardLanguage.ALL.size();
         keys.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         keys.invalidate();
@@ -383,6 +410,7 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
                     sender.sendKey(keyCode, true, (byte) 0, flags);
                     sender.sendKey(keyCode, false, (byte) 0, flags);
                 };
+                forgetJamo();
                 KeyboardLanguage.ALL.get(languageIndex).leave(tapper);
                 languageIndex = (languageIndex + 1) % KeyboardLanguage.ALL.size();
                 KeyboardLanguage.ALL.get(languageIndex).enter(tapper);
@@ -396,6 +424,90 @@ public class OnScreenKeyboard implements KeyboardView.Listener, KeyboardView.App
                 return;
         }
         keys.invalidate();
+    }
+
+    private boolean korean() {
+        return KeyboardLanguage.ALL.get(languageIndex) instanceof KeyboardLanguage.Korean;
+    }
+
+    private boolean beyondShift() {
+        return isActive(modifierIndex(KeyboardLayout.CTRL)) || isActive(modifierIndex(KeyboardLayout.ALT))
+                || isActive(modifierIndex(KeyboardLayout.META));
+    }
+
+    private static boolean isVowelKey(int vk) {
+        return VOWEL_KEYS.indexOf((char) vk) >= 0;
+    }
+
+    private void trackJamo(KeyboardLayout.Key key) {
+        if (!key.letter || beyondShift() || !korean()) {
+            forgetJamo();
+            return;
+        }
+        int jamo = isVowelKey(key.vk) ? VOWEL : CONSONANT;
+        // ㅛ, ㅗ and ㅠ never follow a vowel, a vowel follows a consonant that opens a
+        // syllable, and after a final consonant either may come
+        expectedJamo = jamo == VOWEL ? CONSONANT : lastJamo == VOWEL ? NO_JAMO : VOWEL;
+        lastJamo = jamo;
+        lastLetterVk = key.vk;
+    }
+
+    private void forgetJamo() {
+        lastJamo = NO_JAMO;
+        expectedJamo = NO_JAMO;
+        lastLetterVk = 0;
+    }
+
+    @Override
+    public boolean preferNeighbor(KeyboardLayout.Key touched, KeyboardLayout.Key neighbor) {
+        // A key typed again, as in ㅠㅠ or ㅎㅎ, is meant
+        if (!hangulHint || expectedJamo == NO_JAMO || touched.vk == lastLetterVk || beyondShift() || !korean()) {
+            return false;
+        }
+        boolean neighborVowel = isVowelKey(neighbor.vk);
+        return neighborVowel != isVowelKey(touched.vk) && (neighborVowel ? VOWEL : CONSONANT) == expectedJamo;
+    }
+
+    @Override
+    public void onPreview(KeyboardLayout.Key key, RectF rect) {
+        if (key == null || rect == null) {
+            if (preview != null) {
+                preview.setVisibility(View.GONE);
+            }
+            return;
+        }
+        if (preview == null) {
+            preview = new TextView(parent.getContext());
+            preview.setGravity(Gravity.CENTER);
+            preview.setTextColor(0xFFFFFFFF);
+            GradientDrawable background = new GradientDrawable();
+            background.setColor(0xF0505050);
+            background.setCornerRadius(6 * density);
+            background.setStroke((int) density, 0x80FFFFFF);
+            preview.setBackground(background);
+            parent.addView(preview, new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
+        }
+
+        // Above the key, where the finger does not cover it
+        int width = (int) Math.max(rect.width() * 1.5f, 40 * density);
+        int height = (int) Math.max(rect.height() * 1.4f, 48 * density);
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) preview.getLayoutParams();
+        if (params.width != width || params.height != height) {
+            params.width = width;
+            params.height = height;
+            preview.setLayoutParams(params);
+        }
+        int[] at = new int[2];
+        int[] origin = new int[2];
+        keys.getLocationInWindow(at);
+        parent.getLocationInWindow(origin);
+        float x = at[0] - origin[0] + rect.centerX() - width / 2f;
+        float y = at[1] - origin[1] + rect.top - height - 4 * density;
+        preview.setX(Math.max(0, Math.min(x, parent.getWidth() - width)));
+        preview.setY(Math.max(0, y));
+        preview.setTextSize(TypedValue.COMPLEX_UNIT_PX, height * 0.45f);
+        preview.setText(getLabel(key));
+        preview.setVisibility(View.VISIBLE);
     }
 
     @Override

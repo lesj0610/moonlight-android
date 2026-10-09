@@ -550,7 +550,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                         if (streamZoom != null) {
                             streamZoom.setCoveredBottom(pixels);
                         }
-                    });
+                    },
+                    prefConfig.oskCommitOnRelease, prefConfig.oskHangulHint);
         }
 
         if (prefConfig.usbDriver) {

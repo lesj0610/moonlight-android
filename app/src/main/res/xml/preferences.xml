@@ -154,6 +154,18 @@
             android:title="@string/title_checkbox_show_onscreen_keyboard"
             android:summary="@string/summary_checkbox_show_onscreen_keyboard"
             android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="checkbox_osk_commit_on_release"
+            android:dependency="checkbox_show_onscreen_keyboard"
+            android:title="@string/title_checkbox_osk_commit_on_release"
+            android:summary="@string/summary_checkbox_osk_commit_on_release"
+            android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="checkbox_osk_hangul_hint"
+            android:dependency="checkbox_osk_commit_on_release"
+            android:title="@string/title_checkbox_osk_hangul_hint"
+            android:summary="@string/summary_checkbox_osk_hangul_hint"
+            android:defaultValue="true" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_on_screen_controls_settings"
         android:key="category_onscreen_controls">

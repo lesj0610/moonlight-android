@@ -290,6 +290,10 @@
     <string name="title_checkbox_pinch_zoom">핀치로 확대·축소</string>
     <string name="summary_checkbox_pinch_zoom">두 손가락을 벌리거나 오므려 화면을 최대 400%까지 확대·축소하고, 확대한 상태에서는 두 손가락으로 끌어 화면을 옮깁니다. Android 7 이상이 필요합니다.</string>
     <string name="title_checkbox_show_onscreen_keyboard">가상 키보드</string>
+    <string name="title_checkbox_osk_commit_on_release">손을 뗄 때 입력</string>
+    <string name="summary_checkbox_osk_commit_on_release">가상 키보드의 글자는 손을 뗄 때 입력됩니다. 누르는 동안 손가락 위에 키가 보이니, 잘못 눌렀으면 떼기 전에 옆 키로 밀어 고칠 수 있습니다. 끄면 누르는 즉시 입력합니다(게임용).</string>
+    <string name="title_checkbox_osk_hangul_hint">한글 자모 판정 보정</string>
+    <string name="summary_checkbox_osk_hangul_hint">가상 키보드로 한글을 입력할 때 ㅅ·ㅛ, ㅎ·ㅗ, ㅍ·ㅠ 경계 근처를 누르면 지금 음절에 맞는 쪽으로 판정합니다. 키 가운데는 언제나 그 키입니다.</string>
     <string name="summary_checkbox_show_onscreen_keyboard">스트림 위에 풀키 키보드를 여는 버튼을 표시합니다. 키보드가 열려 있을 때는 두 손가락으로 끌어 키보드에 가린 화면을 올려 볼 수 있습니다.</string>
     <string name="osk_button_description">가상 키보드</string>
     <string name="resolution_custom_entry">직접 입력…</string>

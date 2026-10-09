@@ -44,6 +44,8 @@ public class PreferenceConfiguration {
     private static final String VIDEO_FORMAT_PREF_STRING = "video_format";
     private static final String ONSCREEN_CONTROLLER_PREF_STRING = "checkbox_show_onscreen_controls";
     private static final String ONSCREEN_KEYBOARD_PREF_STRING = "checkbox_show_onscreen_keyboard";
+    private static final String OSK_COMMIT_ON_RELEASE_PREF_STRING = "checkbox_osk_commit_on_release";
+    private static final String OSK_HANGUL_HINT_PREF_STRING = "checkbox_osk_hangul_hint";
     private static final String PINCH_ZOOM_PREF_STRING = "checkbox_pinch_zoom";
     private static final String ONLY_L3_R3_PREF_STRING = "checkbox_only_show_L3R3";
     private static final String SHOW_GUIDE_BUTTON_PREF_STRING = "checkbox_show_guide_button";
@@ -86,6 +88,8 @@ public class PreferenceConfiguration {
 
     private static final boolean ONSCREEN_CONTROLLER_DEFAULT = false;
     private static final boolean ONSCREEN_KEYBOARD_DEFAULT = true;
+    private static final boolean OSK_COMMIT_ON_RELEASE_DEFAULT = true;
+    private static final boolean OSK_HANGUL_HINT_DEFAULT = true;
     private static final boolean PINCH_ZOOM_DEFAULT = true;
 
     // Limits for a resolution typed in by hand. Encoders want even sizes.
@@ -141,6 +145,8 @@ public class PreferenceConfiguration {
     public boolean smallIconMode, multiController, usbDriver, flipFaceButtons;
     public boolean onscreenController;
     public boolean onscreenKeyboard;
+    public boolean oskCommitOnRelease;
+    public boolean oskHangulHint;
     public boolean pinchZoom;
     public boolean onlyL3R3;
     public boolean showGuideButton;
@@ -623,6 +629,8 @@ public class PreferenceConfiguration {
         config.usbDriver = prefs.getBoolean(USB_DRIVER_PREF_SRING, DEFAULT_USB_DRIVER);
         config.onscreenController = prefs.getBoolean(ONSCREEN_CONTROLLER_PREF_STRING, ONSCREEN_CONTROLLER_DEFAULT);
         config.onscreenKeyboard = prefs.getBoolean(ONSCREEN_KEYBOARD_PREF_STRING, ONSCREEN_KEYBOARD_DEFAULT);
+        config.oskCommitOnRelease = prefs.getBoolean(OSK_COMMIT_ON_RELEASE_PREF_STRING, OSK_COMMIT_ON_RELEASE_DEFAULT);
+        config.oskHangulHint = prefs.getBoolean(OSK_HANGUL_HINT_PREF_STRING, OSK_HANGUL_HINT_DEFAULT);
         config.pinchZoom = prefs.getBoolean(PINCH_ZOOM_PREF_STRING, PINCH_ZOOM_DEFAULT);
         config.onlyL3R3 = prefs.getBoolean(ONLY_L3_R3_PREF_STRING, ONLY_L3_R3_DEFAULT);
         config.showGuideButton = prefs.getBoolean(SHOW_GUIDE_BUTTON_PREF_STRING, SHOW_GUIDE_BUTTON_DEFAULT);
