@@ -119,6 +119,9 @@
     <string name="title_checkbox_vibrate_fallback">게임패드 진동을 장치에서 사용하기</string>
     <string name="summary_checkbox_touchscreen_trackpad">활성화시 터치 스크린이 트랙 패드처럼 작동합니다. 비활성화 된 경우 터치 스크린처럼 작동합니다.</string>
     <string name="title_checkbox_touchscreen_trackpad">터치 스크린을 트랙 패드로 사용하기</string>
+    <string name="title_seekbar_trackpad_speed">트랙패드 포인터 속도</string>
+    <string name="summary_seekbar_trackpad_speed">터치 스크린 트랙패드에서 손가락을 미는 만큼 마우스 포인터가 움직이는 거리입니다. 두 손가락 스크롤 속도는 그대로입니다.</string>
+    <string name="suffix_seekbar_trackpad_speed">%</string>
     <string name="category_input_settings">입력 설정</string>
     <string name="summary_audio_config_list">홈 시어터 시스템을 위한 5.1 또는 7.1 서라운드 사운드 활성화</string>
     <string name="title_audio_config_list">서라운드 사운드 설정</string>

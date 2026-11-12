@@ -322,9 +322,11 @@ public class RelativeTouchContext implements TouchContext {
                 int deltaX = eventX - lastTouchX;
                 int deltaY = eventY - lastTouchY;
 
-                // Scale the deltas based on the factors passed to our constructor
-                deltaX = (int) Math.round((double) Math.abs(deltaX) * xFactor);
-                deltaY = (int) Math.round((double) Math.abs(deltaY) * yFactor);
+                // Scale the deltas based on the factors passed to our constructor,
+                // and the pointer speed set by the user for moves (not scrolls)
+                double speed = pointerCount == 2 ? 1 : prefConfig.trackpadSpeed / 100.0;
+                deltaX = (int) Math.round((double) Math.abs(deltaX) * xFactor * speed);
+                deltaY = (int) Math.round((double) Math.abs(deltaY) * yFactor * speed);
 
                 // Fix up the signs
                 if (eventX < lastTouchX) {
